@@ -1,61 +1,86 @@
 
-from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-import yt_dlp
 import os
+import subprocess
+from pyrogram import Client, filters
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+import yt_dlp
 
-# إعدادات البوت
-api_id = 123456  # اكتب ال API ID بتاعك
-api_hash = "abc123abc123abc123abc123abc123ab"  # اكتب ال API Hash بتاعك
-bot_token = "YOUR_BOT_TOKEN"  # اكتب توكن البوت بتاعك
+# تثبيت المتطلبات تلقائيًا
+try:
+    import yt_dlp
+except ImportError:
+    os.system('pip install yt-dlp')
 
-app = Client("youtube_downloader_bot", api_id=api_id, api_hash=api_hash, bot_token=bot_token)
+try:
+    import pyrogram
+except ImportError:
+    os.system('pip install pyrogram tgcrypto')
 
-@app.on_message(filters.private & filters.text)
-async def ask_download_type(client, message):
+# بيانات البوت
+api_id = 20132946
+api_hash = "35292231aa5077cc01bd269ba11a593a"
+bot_token = "8145879704:AAFL1s5R5vANDfQPdnXTLkqCuI4yBO75mCc"
+
+app = Client("youtube_bot", api_id=api_id, api_hash=api_hash, bot_token=bot_token)
+
+@app.on_message(filters.command("start"))
+async def start(client, message):
+    await message.reply_text(
+        "أهلاً بيك!\n\nابعت رابط يوتيوب، واختار الجودة اللي تحبها لتحميل الفيديو أو الصوت.",
+    )
+
+@app.on_message(filters.text & filters.private)
+async def handle_url(client, message):
     url = message.text.strip()
-    if "youtube.com" not in url and "youtu.be" not in url:
-        await message.reply("ارسللي رابط يوتيوب صحيح.")
+    if not ("youtu.be" in url or "youtube.com" in url):
+        await message.reply("من فضلك ابعت رابط يوتيوب صحيح.")
         return
 
     await message.reply(
-        "تحب تحمل ايه؟",
+        "اختار الجودة اللي تحبها:",
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("فيديو", callback_data=f"video|{url}")],
-            [InlineKeyboardButton("صوت", callback_data=f"audio|{url}")]
+            [InlineKeyboardButton("1080p", callback_data=f"1080p|{url}")],
+            [InlineKeyboardButton("720p", callback_data=f"720p|{url}")],
+            [InlineKeyboardButton("360p", callback_data=f"360p|{url}")],
+            [InlineKeyboardButton("صوت MP3", callback_data=f"audio|{url}")],
         ])
     )
 
 @app.on_callback_query()
-async def callback_handler(client, callback_query: CallbackQuery):
-    data = callback_query.data
-    choice, url = data.split("|")
-    await callback_query.message.edit_text("جاري التحميل... استنى شوية.")
+async def download_video(client, callback_query):
+    choice, url = callback_query.data.split("|")
+    await callback_query.message.edit_text("جاري التحميل...")
+
+    if choice == "audio":
+        ydl_opts = {
+            "format": "bestaudio/best",
+            "outtmpl": "downloaded.%(ext)s",
+            "postprocessors": [
+                {"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"},
+            ],
+        }
+    else:
+        ydl_opts = {
+            "format": f"bestvideo[height<={choice[:-1]}]+bestaudio/best",
+            "outtmpl": "downloaded.%(ext)s",
+            "merge_output_format": "mp4"
+        }
 
     try:
-        if choice == "video":
-            ydl_opts = {'format': 'best', 'outtmpl': 'downloaded.%(ext)s'}
-        else:
-            ydl_opts = {
-                'format': 'bestaudio/best',
-                'outtmpl': 'downloaded.%(ext)s',
-                'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}],
-            }
-
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info)
             if choice == "audio":
                 filename = filename.rsplit(".", 1)[0] + ".mp3"
 
-        if choice == "video":
-            await callback_query.message.reply_video(filename, caption="اتفضل الفيديو!")
-        else:
+        if choice == "audio":
             await callback_query.message.reply_audio(filename, caption="اتفضل الصوت!")
+        else:
+            await callback_query.message.reply_video(filename, caption="اتفضل الفيديو!")
 
         os.remove(filename)
 
     except Exception as e:
-        await callback_query.message.edit_text(f"حصل خطأ: {str(e)}")
+        await callback_query.message.edit_text(f"حصل خطأ: {e}")
 
 app.run()
